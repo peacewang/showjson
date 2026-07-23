@@ -16,14 +16,24 @@
   } from "$lib/json/format";
   import { analyzeJson } from "$lib/json/parser";
   import { repairJson } from "$lib/json/repair";
+  import { findTextMatches } from "$lib/text-search";
   import type { AnalysisResult } from "$lib/json/types";
 
   type ViewMode = "tree" | "pretty" | "raw";
+
+  interface AppSettings {
+    shortcut: string;
+    captureSelection: boolean;
+  }
 
   const emptyAnalysis: AnalysisResult = {
     inputText: "",
     documents: [],
     elapsedMs: 0,
+  };
+  const defaultSettings: AppSettings = {
+    shortcut: "CommandOrControl+Shift+J",
+    captureSelection: false,
   };
 
   let analysis = $state<AnalysisResult>(emptyAnalysis);
@@ -39,8 +49,17 @@
   let history = $state<ClipboardHistoryEntry[]>([]);
   let historyOpen = $state(false);
   let activeHistoryId = $state("");
+  let clearHistoryConfirming = $state(false);
+  let clearHistoryBusy = $state(false);
   let repairBusy = $state(false);
   let repairError = $state("");
+  let appSettings = $state<AppSettings>(defaultSettings);
+  let settingsOpen = $state(false);
+  let settingsBusy = $state(false);
+  let settingsError = $state("");
+  let draftShortcut = $state(defaultSettings.shortcut);
+  let draftCaptureSelection = $state(false);
+  let prettyActiveMatch = $state(0);
   let searchInput = $state<HTMLInputElement>();
   let rawErrorTextarea = $state<HTMLTextAreaElement>();
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -56,6 +75,10 @@
     currentDocument
       ? findSearchMatches(currentDocument.value, searchQuery)
       : { direct: new Set<string>(), branches: new Set<string>(), count: 0 },
+  );
+  const prettyMatches = $derived(findTextMatches(prettyText, searchQuery));
+  const visibleMatchCount = $derived(
+    mode === "pretty" ? prettyMatches.count : mode === "tree" ? matches.count : 0,
   );
   const nodeCount = $derived(
     currentDocument ? countNodes(currentDocument.value) : 0,
@@ -74,11 +97,134 @@
         shortcut: "快捷键",
         tray: "托盘",
         clipboard: "剪贴板",
+        selection: "选中文本",
+        "selection-fallback": "剪贴板回退",
         history: "历史",
         repair: "已修复",
         manual: "手动输入",
       }[source] ?? source
     );
+  }
+
+  function isMacPlatform(): boolean {
+    return typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+  }
+
+  function shortcutDisplay(shortcut: string): string {
+    if (isMacPlatform()) {
+      return shortcut
+        .replaceAll("CommandOrControl", "⌘")
+        .replaceAll("Command", "⌘")
+        .replaceAll("Control", "⌃")
+        .replaceAll("Alt", "⌥")
+        .replaceAll("Shift", "⇧")
+        .replaceAll("+", " ");
+    }
+    return shortcut
+      .replaceAll("CommandOrControl", "Ctrl")
+      .replaceAll("Control", "Ctrl")
+      .replaceAll("Command", "Win")
+      .replaceAll("+", " + ");
+  }
+
+  function shortcutKeyFromEvent(event: KeyboardEvent): string | null {
+    if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);
+    if (/^Digit[0-9]$/.test(event.code)) return event.code.slice(5);
+    if (/^F(?:[1-9]|1[0-9]|2[0-4])$/.test(event.code)) return event.code;
+
+    return (
+      {
+        Space: "Space",
+        Enter: "Enter",
+        Tab: "Tab",
+        Backspace: "Backspace",
+        Delete: "Delete",
+        ArrowUp: "ArrowUp",
+        ArrowDown: "ArrowDown",
+        ArrowLeft: "ArrowLeft",
+        ArrowRight: "ArrowRight",
+        Home: "Home",
+        End: "End",
+        PageUp: "PageUp",
+        PageDown: "PageDown",
+        Backquote: "Backquote",
+        Minus: "Minus",
+        Equal: "Equal",
+        BracketLeft: "BracketLeft",
+        BracketRight: "BracketRight",
+        Backslash: "Backslash",
+        Semicolon: "Semicolon",
+        Quote: "Quote",
+        Comma: "Comma",
+        Period: "Period",
+        Slash: "Slash",
+      }[event.code] ?? null
+    );
+  }
+
+  function captureSettingsShortcut(event: KeyboardEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    settingsError = "";
+
+    const key = shortcutKeyFromEvent(event);
+    if (!key) {
+      if (!["Meta", "Control", "Alt", "Shift"].includes(event.key)) {
+        settingsError = "暂不支持这个按键，请换一个组合";
+      }
+      return;
+    }
+
+    const modifiers: string[] = [];
+    if (event.metaKey) modifiers.push("Command");
+    if (event.ctrlKey) modifiers.push("Control");
+    if (event.altKey) modifiers.push("Alt");
+    if (event.shiftKey) modifiers.push("Shift");
+    if (modifiers.length === 0) {
+      settingsError = "快捷键至少需要一个修饰键";
+      return;
+    }
+
+    draftShortcut = [...modifiers, key].join("+");
+  }
+
+  async function openSettings() {
+    settingsError = "";
+    try {
+      if (isTauriRuntime()) {
+        appSettings = await invoke<AppSettings>("get_settings");
+      }
+      draftShortcut = appSettings.shortcut;
+      draftCaptureSelection = appSettings.captureSelection;
+      settingsOpen = true;
+      historyOpen = false;
+    } catch (error) {
+      copiedMessage = `读取设置失败：${String(error)}`;
+    }
+  }
+
+  async function saveSettings() {
+    settingsBusy = true;
+    settingsError = "";
+    try {
+      if (isTauriRuntime()) {
+        appSettings = await invoke<AppSettings>("update_settings", {
+          shortcut: draftShortcut,
+          captureSelection: draftCaptureSelection,
+        });
+      } else {
+        appSettings = {
+          shortcut: draftShortcut,
+          captureSelection: draftCaptureSelection,
+        };
+      }
+      settingsOpen = false;
+      copiedMessage = "Settings 已保存";
+    } catch (error) {
+      settingsError = String(error);
+    } finally {
+      settingsBusy = false;
+    }
   }
 
   async function loadClipboardHistory() {
@@ -212,17 +358,21 @@
   }
 
   async function clearClipboardHistory() {
-    if (!window.confirm("确认清空全部剪贴板历史？此操作无法撤销。")) return;
+    clearHistoryBusy = true;
     try {
       if (isTauriRuntime()) {
-        await invoke("clear_history");
+        history = await invoke<ClipboardHistoryEntry[]>("clear_history");
       } else {
         localStorage.removeItem("showjson.clipboardHistory");
+        history = [];
       }
-      history = [];
       activeHistoryId = "";
+      clearHistoryConfirming = false;
+      copiedMessage = "剪贴板历史已清空";
     } catch (error) {
       copiedMessage = `清空失败：${String(error)}`;
+    } finally {
+      clearHistoryBusy = false;
     }
   }
 
@@ -260,6 +410,29 @@
     expansionVersion += 1;
   }
 
+  function scrollToPrettyMatch() {
+    document
+      .querySelector<HTMLElement>(
+        `[data-pretty-match="${prettyActiveMatch}"]`,
+      )
+      ?.scrollIntoView({ block: "center", inline: "nearest" });
+  }
+
+  function resetPrettyMatch() {
+    prettyActiveMatch = 0;
+    if (mode === "pretty" && prettyMatches.count > 0) {
+      void tick().then(scrollToPrettyMatch);
+    }
+  }
+
+  function navigatePrettyMatch(delta: number) {
+    if (prettyMatches.count === 0) return;
+    prettyActiveMatch =
+      (prettyActiveMatch + delta + prettyMatches.count) %
+      prettyMatches.count;
+    void tick().then(scrollToPrettyMatch);
+  }
+
   async function hideWindow() {
     if (isTauriRuntime()) {
       await invoke("hide_window");
@@ -269,6 +442,15 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
+      if (settingsOpen) {
+        settingsOpen = false;
+        return;
+      }
+      if (historyOpen) {
+        historyOpen = false;
+        clearHistoryConfirming = false;
+        return;
+      }
       void hideWindow();
       return;
     }
@@ -300,7 +482,18 @@
             elapsedMs: 0,
           };
         }),
+        listen<string>("showjson://notice", (event) => {
+          copiedMessage = event.payload;
+        }),
+        listen("showjson://open-settings", () => {
+          void openSettings();
+        }),
       ]).then((listeners) => unlisteners.push(...listeners));
+      void invoke<AppSettings>("get_settings")
+        .then((settings) => (appSettings = settings))
+        .catch((error) => {
+          copiedMessage = `读取设置失败：${String(error)}`;
+        });
     }
     void loadClipboardHistory();
 
@@ -333,7 +526,10 @@
       <button
         class:active={historyOpen}
         class="history-button"
-        onclick={() => (historyOpen = !historyOpen)}
+        onclick={() => {
+          historyOpen = !historyOpen;
+          clearHistoryConfirming = false;
+        }}
       >
         <span aria-hidden="true">◷</span>
         历史
@@ -342,7 +538,7 @@
       <div class="shortcut-hint" title="读取剪贴板的唯一入口">
         <span class="capture-icon" aria-hidden="true">⌘</span>
         查看剪贴板
-        <kbd>⌘/Ctrl ⇧ J</kbd>
+        <kbd>{shortcutDisplay(appSettings.shortcut)}</kbd>
       </div>
     </div>
   </header>
@@ -351,7 +547,10 @@
     <button
       class="history-backdrop"
       aria-label="关闭剪贴板历史"
-      onclick={() => (historyOpen = false)}
+      onclick={() => {
+        historyOpen = false;
+        clearHistoryConfirming = false;
+      }}
     ></button>
     <aside class="history-panel">
       <div class="history-header">
@@ -400,7 +599,21 @@
         </div>
         <div class="history-footer">
           <span>最多 50 条 / 25 MB</span>
-          <button onclick={clearClipboardHistory}>清空全部</button>
+          {#if clearHistoryConfirming}
+            <span class="clear-history-confirm">
+              <button
+                onclick={() => (clearHistoryConfirming = false)}
+                disabled={clearHistoryBusy}
+              >取消</button>
+              <button
+                class="confirm"
+                onclick={clearClipboardHistory}
+                disabled={clearHistoryBusy}
+              >{clearHistoryBusy ? "清空中…" : "确认清空"}</button>
+            </span>
+          {:else}
+            <button onclick={() => (clearHistoryConfirming = true)}>清空全部</button>
+          {/if}
         </div>
       {:else}
         <div class="history-empty">
@@ -410,6 +623,69 @@
         </div>
       {/if}
     </aside>
+  {/if}
+
+  {#if settingsOpen}
+    <button
+      class="settings-backdrop"
+      aria-label="关闭 Settings"
+      onclick={() => (settingsOpen = false)}
+    ></button>
+    <div
+      class="settings-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
+      <header>
+        <div>
+          <h2 id="settings-title">Settings</h2>
+          <p>快捷键修改后立即生效，并保存在本机。</p>
+        </div>
+        <button aria-label="关闭 Settings" onclick={() => (settingsOpen = false)}>×</button>
+      </header>
+
+      <div class="settings-content">
+        <label class="settings-field">
+          <span>触发快捷键</span>
+          <input
+            class="shortcut-recorder"
+            value={shortcutDisplay(draftShortcut)}
+            readonly
+            aria-label="录制触发快捷键"
+            onkeydown={captureSettingsShortcut}
+            onfocus={(event) => event.currentTarget.select()}
+          />
+          <small>点击输入框，然后直接按下新的组合键。</small>
+        </label>
+
+        <label class="selection-toggle">
+          <span>
+            <strong>优先读取选中文本</strong>
+            <small>自动发送复制快捷键；失败时读取原剪贴板。</small>
+          </span>
+          <input type="checkbox" bind:checked={draftCaptureSelection} />
+        </label>
+
+        {#if draftCaptureSelection && isMacPlatform()}
+          <p class="permission-note">
+            macOS 需要在“系统设置 → 隐私与安全性 → 辅助功能”中允许
+            ShowJSON。未授权时会回退到原剪贴板。
+          </p>
+        {/if}
+
+        {#if settingsError}
+          <p class="settings-error">{settingsError}</p>
+        {/if}
+      </div>
+
+      <footer>
+        <button class="secondary" onclick={() => (settingsOpen = false)}>取消</button>
+        <button class="primary" onclick={saveSettings} disabled={settingsBusy}>
+          {settingsBusy ? "保存中…" : "保存"}
+        </button>
+      </footer>
+    </div>
   {/if}
 
   {#if currentDocument}
@@ -433,7 +709,13 @@
     <section class="toolbar">
       <div class="segmented" aria-label="查看模式">
         <button class:active={mode === "tree"} onclick={() => (mode = "tree")}>Tree</button>
-        <button class:active={mode === "pretty"} onclick={() => (mode = "pretty")}>Pretty</button>
+        <button
+          class:active={mode === "pretty"}
+          onclick={() => {
+            mode = "pretty";
+            resetPrettyMatch();
+          }}
+        >Pretty</button>
         <button class:active={mode === "raw"} onclick={() => (mode = "raw")}>Raw</button>
       </div>
 
@@ -444,13 +726,37 @@
           bind:value={searchQuery}
           placeholder="搜索 Key 或 Value"
           aria-label="搜索 Key 或 Value"
+          oninput={resetPrettyMatch}
+          onkeydown={(event) => {
+            if (event.key === "Enter" && mode === "pretty") {
+              event.preventDefault();
+              navigatePrettyMatch(event.shiftKey ? -1 : 1);
+            }
+          }}
         />
         {#if searchQuery}
-          <span class="match-count">{matches.count}</span>
+          <span class="match-count">
+            {visibleMatchCount}{mode === "pretty" && prettyMatches.limited ? "+" : ""}
+          </span>
+          {#if mode === "pretty" && prettyMatches.count > 0}
+            <button
+              aria-label="上一个匹配"
+              class="search-nav"
+              onclick={() => navigatePrettyMatch(-1)}
+            >↑</button>
+            <button
+              aria-label="下一个匹配"
+              class="search-nav"
+              onclick={() => navigatePrettyMatch(1)}
+            >↓</button>
+          {/if}
           <button
             aria-label="清空搜索"
             class="clear-search"
-            onclick={() => (searchQuery = "")}
+            onclick={() => {
+              searchQuery = "";
+              prettyActiveMatch = 0;
+            }}
           >×</button>
         {:else}
           <kbd>⌘F</kbd>
@@ -497,8 +803,13 @@
             onCopy={copyToClipboard}
           />
         </div>
+      {:else if mode === "pretty"}
+        <pre class="text-view"><code>{#each prettyMatches.segments as segment}{#if segment.matchIndex !== undefined}<mark
+                  class:active={segment.matchIndex === prettyActiveMatch}
+                  data-pretty-match={segment.matchIndex}
+                >{segment.text}</mark>{:else}{segment.text}{/if}{/each}</code></pre>
       {:else}
-        <pre class="text-view"><code>{mode === "pretty" ? prettyText : currentDocument.rawText}</code></pre>
+        <pre class="text-view"><code>{currentDocument.rawText}</code></pre>
       {/if}
     </section>
 
@@ -943,6 +1254,22 @@
     color: #efa47e;
   }
 
+  .clear-history-confirm {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .clear-history-confirm .confirm {
+    color: #ff9a75;
+    font-weight: 600;
+  }
+
+  .history-footer button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
   .history-empty {
     flex: 1;
     display: flex;
@@ -966,6 +1293,178 @@
 
   .history-empty small {
     font-size: 10px;
+  }
+
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    border: 0;
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(3px);
+  }
+
+  .settings-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 50;
+    width: min(470px, calc(100vw - 36px));
+    transform: translate(-50%, -50%);
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    color: var(--text-primary);
+    background: #151a20;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  }
+
+  .settings-dialog header,
+  .settings-dialog footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+  }
+
+  .settings-dialog header {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-dialog header h2,
+  .settings-dialog header p {
+    margin: 0;
+  }
+
+  .settings-dialog header h2 {
+    font-size: 16px;
+  }
+
+  .settings-dialog header p {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+
+  .settings-dialog header > button {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+    font-size: 18px;
+  }
+
+  .settings-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 18px;
+  }
+
+  .settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .shortcut-recorder {
+    height: 38px;
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    outline: 0;
+    padding: 0 12px;
+    color: var(--accent);
+    background: #0e1115;
+    font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .shortcut-recorder:focus {
+    border-color: #39745f;
+    box-shadow: 0 0 0 2px rgba(88, 214, 166, 0.08);
+  }
+
+  .settings-field small,
+  .selection-toggle small {
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+
+  .selection-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #11151a;
+  }
+
+  .selection-toggle > span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .selection-toggle strong {
+    font-size: 11px;
+  }
+
+  .selection-toggle input {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--accent);
+  }
+
+  .permission-note,
+  .settings-error {
+    margin: 0;
+    padding: 9px 11px;
+    border-radius: 7px;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  .permission-note {
+    color: #c9a985;
+    background: rgba(134, 81, 37, 0.11);
+  }
+
+  .settings-error {
+    color: #f0a17d;
+    background: rgba(189, 116, 77, 0.12);
+  }
+
+  .settings-dialog footer {
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .settings-dialog footer button {
+    min-width: 72px;
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 7px 12px;
+    color: var(--text-secondary);
+    background: var(--surface-raised);
+    cursor: pointer;
+  }
+
+  .settings-dialog footer .primary {
+    border-color: #39745f;
+    color: #e9fff6;
+    background: #235b49;
+  }
+
+  .settings-dialog footer button:disabled {
+    cursor: wait;
+    opacity: 0.6;
   }
 
   .brand {
@@ -1145,6 +1644,23 @@
     font-size: 10px;
   }
 
+  .search-nav {
+    width: 18px;
+    height: 20px;
+    border: 0;
+    border-radius: 4px;
+    padding: 0;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+    font-size: 10px;
+  }
+
+  .search-nav:hover {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+  }
+
   .clear-search {
     width: 20px;
     height: 20px;
@@ -1219,6 +1735,19 @@
     tab-size: 2;
     white-space: pre;
     font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  .text-view mark {
+    border-radius: 2px;
+    padding: 1px 0;
+    color: inherit;
+    background: rgba(255, 197, 76, 0.28);
+  }
+
+  .text-view mark.active {
+    color: #101318;
+    background: #ffd166;
+    box-shadow: 0 0 0 1px rgba(255, 209, 102, 0.45);
   }
 
   .status-bar {
