@@ -8,3 +8,7 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Local maintainer notes and editor settings
+/docs/release-guide.md
+/.vscode/

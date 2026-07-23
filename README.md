@@ -3,100 +3,88 @@
 [![CI](https://github.com/peacewang/showjson/actions/workflows/ci.yml/badge.svg)](https://github.com/peacewang/showjson/actions/workflows/ci.yml)
 [![Release](https://github.com/peacewang/showjson/actions/workflows/release.yml/badge.svg)](https://github.com/peacewang/showjson/actions/workflows/release.yml)
 
-ShowJSON 是一个本地优先的跨平台 JSON 快速查看器。
+ShowJSON 是一个轻量、本地优先的跨平台 JSON 快速查看器。
 
-在浏览器、终端或任意应用中复制文本，然后按 `Cmd/Ctrl + Shift + J`，即可在快速窗口中查看格式化后的 JSON。
+在浏览器、终端或任意应用中复制文本，按下 `Cmd/Ctrl + Shift + J`，即可立即查看结构化结果，不必再把内容粘贴到 IDE 或在线格式化网站。
 
-读取系统剪贴板只有这一种触发方式。点击托盘图标或托盘菜单只显示当前窗口，不会读取或识别剪贴板。
+[下载 ShowJSON](https://github.com/peacewang/showjson/releases)
 
-## 当前能力
+## 主要功能
 
-- 全局快捷键和系统托盘。
-- 窗口切换到其他应用时自动隐藏，不会持续遮挡其他界面。
-- 本地持久化剪贴板历史，支持去重、删除和清空。
-- 标准 JSON、整体转义 JSON、NDJSON/JSON Lines。
-- 从服务端日志等混合文本中提取一个或多个 JSON 片段。
+- 自动识别标准 JSON、转义 JSON、NDJSON/JSON Lines。
+- 从服务端日志、告警消息等混合文本中提取 JSON。
 - Tree、Pretty、Raw 三种查看模式。
-- 搜索 Key/Value、分层展开和折叠。
-- 复制节点值、JSONPath 或完整格式化 JSON。
-- 使用 `lossless-json` 保留超出 JavaScript 安全范围的整数。
-- 所有内容仅在本地处理，不会在后台持续监听剪贴板。
-- 解析失败时直接显示原文和错误位置；只在用户点击后尝试修复。
-- 单实例运行；关闭窗口时隐藏到托盘，托盘菜单可彻底退出。
+- 搜索 Key/Value，展开或折叠节点。
+- 复制节点值、JSONPath 或完整格式化结果。
+- 保留超出 JavaScript 安全范围的大整数。
+- 本地保存最近 50 条剪贴板历史，支持删除和清空。
+- 解析失败时显示原文、错误位置和原因，由用户决定是否修复。
+- 所有数据只在本机处理，不上传服务器，也不会持续监听剪贴板。
 
-## 使用
+## 下载与安装
 
-1. 启动 ShowJSON。
+请前往 [Releases](https://github.com/peacewang/showjson/releases) 下载与你的系统对应的安装包：
+
+| 系统 | 安装包 |
+| --- | --- |
+| macOS Intel | `darwin-x64.dmg` |
+| macOS Apple Silicon | `darwin-aarch64.dmg` |
+| Windows x64 | `windows-x64-setup.exe` |
+| Linux x64 | `linux-amd64.AppImage` 或 `linux-amd64.deb` |
+
+### macOS 首次打开
+
+当前 macOS 安装包尚未使用 Apple Developer ID 签名和公证，因此第一次打开时，macOS 可能提示“无法验证开发者”或“Apple 无法检查其是否包含恶意软件”。
+
+1. 打开 DMG，将 ShowJSON 拖入“应用程序”。
+2. 尝试打开一次 ShowJSON。
+3. 打开“系统设置/系统偏好设置” → “隐私与安全性/安全性与隐私”。
+4. 在安全提示旁点击“仍要打开”，输入登录密码并确认。
+
+确认一次后，后续可以像普通应用一样启动。请只从本仓库的 Releases 页面下载安装包。
+
+### Linux AppImage
+
+如果 AppImage 无法直接运行，先赋予执行权限：
+
+```bash
+chmod +x ShowJSON-*.AppImage
+```
+
+## 快速上手
+
+1. 启动 ShowJSON，它会驻留在系统托盘。
 2. 在任意应用中复制包含 JSON 的文本。
-3. 按 `Cmd/Ctrl + Shift + J` 读取并识别剪贴板。
-4. 查看完成后按 `Esc` 隐藏窗口，或直接切换到其他应用。
+3. 按 `Cmd + Shift + J`（macOS）或 `Ctrl + Shift + J`（Windows/Linux）。
+4. 在 ShowJSON 中查看、搜索或复制结果。
+5. 按 `Esc`、关闭窗口或切换到其他应用即可隐藏窗口。
 
-点击托盘图标只会重新显示当前界面，不会触发新的识别。
+只有全局快捷键会读取并识别剪贴板。点击应用图标或托盘图标只会显示现有界面，不会读取新的剪贴板内容。
 
-也可以在空白页中选择“直接粘贴文本”进行手动解析。
+## 常见问题
 
-## 本地开发
+### 为什么切换到其他应用后窗口会消失？
 
-### 环境要求
+ShowJSON 被设计为快速查看窗口。完成查看后切换应用，窗口会自动隐藏，避免遮挡当前工作。
 
-- Node.js 20+
-- Rust stable
-- macOS：Xcode Command Line Tools
-- Windows：Microsoft C++ Build Tools、WebView2
-- Linux：Tauri 2 所需的 WebKitGTK 4.1 与 AppIndicator 开发包
+### JSON 无法解析时会自动修改原文吗？
 
-安装依赖：
+不会。ShowJSON 会显示原文、错误位置和问题原因，只有点击“修复”后才会尝试修复并覆盖当前数据。
 
-```bash
-npm install
-```
+### 剪贴板历史保存在哪里？
 
-运行桌面开发版本：
+历史记录保存在当前电脑的本地应用数据中，不会同步或上传。最多保存 50 条，总容量上限 25 MB；单条超过 5 MB 时不会写入历史。
 
-```bash
-npm run tauri dev
-```
+### 如何彻底退出？
 
-运行检查和测试：
+关闭窗口只会隐藏 ShowJSON。需要彻底退出时，请使用托盘菜单中的“退出”。
 
-```bash
-npm run check
-npm test
-cargo check --manifest-path src-tauri/Cargo.toml
-```
+## 系统要求
 
-构建当前平台安装包：
+- macOS 12 或更高版本。
+- Windows 10/11 x64。
+- 主流 x64 Linux 桌面发行版。
 
-```bash
-npm run tauri build
-```
+## License
 
-## 发布产物
-
-GitHub Actions 在推送 `v*` Tag 后为以下平台构建草稿 Release：
-
-- macOS Intel：DMG
-- macOS Apple Silicon：DMG
-- Windows x64：NSIS `setup.exe`
-- Linux x64：AppImage 和 Deb
-
-macOS 安装包正式公开分发前需要配置签名和 notarization；Windows 正式公开分发时建议配置代码签名。
-
-第一次发布请按照 [GitHub Release 操作指南](docs/release-guide.md) 完成独立建仓、版本同步、Tag、Actions 和 Draft Release 验证。
-
-## 项目结构
-
-```text
-src/
-  lib/components/TreeNode.svelte  JSON 树节点
-  lib/json/parser.ts              JSON 识别和日志片段提取
-  lib/json/format.ts              格式化、统计、搜索和 JSONPath
-  routes/+page.svelte             主界面
-src-tauri/
-  src/lib.rs                      快捷键、剪贴板、托盘和窗口管理
-  tauri.conf.json                 桌面打包配置
-```
-
-## MVP 边界
-
-当前版本是只读查看器，不包含 JSON 编辑、云同步和后台自动监听剪贴板。剪贴板历史最多保存 50 条、总计 25 MB，单条超过 5 MB 不记录；单次文本输入上限为 50 MB。
+[MIT](LICENSE)
