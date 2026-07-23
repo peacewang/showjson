@@ -1,5 +1,8 @@
 # ShowJSON
 
+[![CI](https://github.com/peacewang/showjson/actions/workflows/ci.yml/badge.svg)](https://github.com/peacewang/showjson/actions/workflows/ci.yml)
+[![Release](https://github.com/peacewang/showjson/actions/workflows/release.yml/badge.svg)](https://github.com/peacewang/showjson/actions/workflows/release.yml)
+
 ShowJSON 是一个本地优先的跨平台 JSON 快速查看器。
 
 在浏览器、终端或任意应用中复制文本，然后按 `Cmd/Ctrl + Shift + J`，即可在快速窗口中查看格式化后的 JSON。
