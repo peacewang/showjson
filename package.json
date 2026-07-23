@@ -1,6 +1,6 @@
 {
   "name": "showjson",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A fast, local-first JSON quick viewer for desktop.",
   "type": "module",
   "scripts": {
