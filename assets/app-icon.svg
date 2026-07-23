@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c2526"/>
+      <stop offset="1" stop-color="#0d1215"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#78ecc0"/>
+      <stop offset="1" stop-color="#3ab786"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#background)"/>
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="none" stroke="#69dcaf" stroke-opacity=".18" stroke-width="12"/>
+  <path d="M390 230c-85 0-132 42-132 126v75c0 50-22 72-68 72v18c46 0 68 22 68 72v75c0 84 47 126 132 126h45v-76h-25c-42 0-60-19-60-62v-82c0-57-25-91-76-102 51-12 76-46 76-103v-81c0-44 18-63 60-63h25v-75h-45z" fill="url(#accent)"/>
+  <path d="M634 230c85 0 132 42 132 126v75c0 50 22 72 68 72v18c-46 0-68 22-68 72v75c0 84-47 126-132 126h-45v-76h25c42 0 60-19 60-62v-82c0-57 25-91 76-102-51-12-76-46-76-103v-81c0-44-18-63-60-63h-25v-75h45z" fill="url(#accent)"/>
+  <circle cx="512" cy="397" r="27" fill="#7ab7ff"/>
+  <circle cx="512" cy="512" r="27" fill="#eab174"/>
+  <circle cx="512" cy="627" r="27" fill="#a9de91"/>
+</svg>
